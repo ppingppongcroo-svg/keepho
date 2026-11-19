@@ -136,10 +136,84 @@ for (const btn of document.querySelectorAll('#tools button[data-cmd]')) {
   // mousedown을 막아야 글자 선택이 풀리지 않아요.
   btn.addEventListener('mousedown', e => e.preventDefault())
   btn.onclick = () => {
-    document.execCommand(btn.dataset.cmd)
-    editor.dispatchEvent(new Event('input'))
+    if (btn.dataset.cmd === 'insertUnorderedList') toggleBullets()
+    else {
+      document.execCommand(btn.dataset.cmd)
+      editor.dispatchEvent(new Event('input'))
+    }
   }
 }
+
+// ── 체크리스트 ───────────────────────────────────────────────
+// 체크리스트는 글머리 기호 목록(<ul>)에 'checklist'라는 이름표를 붙인 거예요.
+// 각 줄(<li>)의 data-checked 가 "true"면 체크된 상태예요.
+
+// 지금 커서가 있는 곳의 목록(<ul>)과 줄(<li>)을 찾아요.
+function caretNode() {
+  const sel = getSelection()
+  if (!sel.rangeCount) return null
+  const node = sel.anchorNode
+  return node?.nodeType === Node.TEXT_NODE ? node.parentElement : node
+}
+function currentList() {
+  const ul = caretNode()?.closest?.('ul')
+  return ul && editor.contains(ul) ? ul : null
+}
+
+function makeChecklist(ul) {
+  ul.classList.add('checklist')
+  for (const li of ul.querySelectorAll(':scope > li')) {
+    if (!li.hasAttribute('data-checked')) li.dataset.checked = 'false'
+  }
+}
+
+// ☑ 버튼: 일반 글 → 체크리스트 → 일반 글
+function toggleChecklist() {
+  editor.focus()
+  const ul = currentList()
+  if (ul?.classList.contains('checklist')) {
+    document.execCommand('insertUnorderedList') // 목록 풀기
+  } else if (ul) {
+    makeChecklist(ul) // 글머리 기호 목록 → 체크리스트
+  } else {
+    document.execCommand('insertUnorderedList') // 새 목록을 만들고
+    const made = currentList()
+    if (made) makeChecklist(made) // 체크리스트로 바꿔요
+  }
+  editor.dispatchEvent(new Event('input'))
+}
+
+// •≡ 버튼: 체크리스트 안에서 누르면 일반 글머리 기호로 바꿔요.
+function toggleBullets() {
+  editor.focus()
+  const ul = currentList()
+  if (ul?.classList.contains('checklist')) {
+    ul.classList.remove('checklist')
+    ul.querySelectorAll('li').forEach(li => li.removeAttribute('data-checked'))
+  } else {
+    document.execCommand('insertUnorderedList')
+  }
+  editor.dispatchEvent(new Event('input'))
+}
+
+$('#check').addEventListener('mousedown', e => e.preventDefault())
+$('#check').onclick = toggleChecklist
+
+// 네모 칸을 누르면 체크 ↔ 해제
+editor.addEventListener('mousedown', e => {
+  const li = e.target.closest?.('ul.checklist > li')
+  if (!li || e.clientX - li.getBoundingClientRect().left > 22) return // 네모 칸(왼쪽 22px) 부분만
+  e.preventDefault() // 커서가 움직이지 않게
+  li.dataset.checked = li.dataset.checked === 'true' ? 'false' : 'true'
+  editor.dispatchEvent(new Event('input'))
+})
+
+// 체크된 줄에서 Enter를 치면 새 줄도 체크된 채로 복사돼서, 새 줄은 비워 줘요.
+editor.addEventListener('input', e => {
+  if (e.inputType !== 'insertParagraph') return
+  const li = caretNode()?.closest?.('ul.checklist > li')
+  if (li) li.dataset.checked = 'false'
+})
 
 // ── 단축키 ───────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
@@ -150,8 +224,10 @@ document.addEventListener('keydown', e => {
     window.memo.create(id)
   } else if (key === 'l' && e.shiftKey) {
     e.preventDefault()
-    document.execCommand('insertUnorderedList')
-    editor.dispatchEvent(new Event('input'))
+    toggleBullets()
+  } else if (key === 'c' && e.shiftKey) {
+    e.preventDefault()
+    toggleChecklist()
   }
 })
 

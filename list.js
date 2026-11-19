@@ -11,6 +11,10 @@ let data = { colors: {}, notes: [] }
 function summarize(html) {
   const t = document.createElement('template')
   t.innerHTML = (html || '').replace(/<\/(p|div|li)>|<br\s*\/?>/gi, '$&\n')
+  // 체크리스트 줄 앞에 ☐ / ☑ 를 붙여서 미리보기에서도 보이게
+  for (const li of t.content.querySelectorAll('ul.checklist > li')) {
+    li.prepend(li.dataset.checked === 'true' ? '☑ ' : '☐ ')
+  }
   const text = t.content.textContent.replace(/\n{3,}/g, '\n\n').trim()
   const img = t.content.querySelector('img')
   return { text, image: img ? img.getAttribute('src') : null }

@@ -94,6 +94,42 @@ body:hover #bar button, #bar button.on { opacity: 0.55; }
 }
 #editor ul { padding-left: 1.3em; margin: 4px 0; }
 
+/* ── 체크리스트: <ul class="checklist"><li data-checked="true|false"> ── */
+#editor ul.checklist { list-style: none; padding-left: 0; }
+#editor ul.checklist li {
+  position: relative;
+  padding-left: 26px;
+  margin: 2px 0;
+}
+/* 네모 칸: 실제 체크박스가 아니라 CSS로 그린 그림이에요 */
+#editor ul.checklist li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0.28em;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid currentColor;
+  border-radius: 4px;
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 15px;
+  text-align: center;
+}
+#editor ul.checklist li[data-checked="true"]::before {
+  content: '✓';
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+  opacity: 1;
+  font-weight: bold;
+}
+#editor ul.checklist li[data-checked="true"] {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
 /* ── 아래 서식 도구 ── */
 #tools {
   display: flex;

@@ -1,7 +1,7 @@
 {
   "name": "my-sticky",
   "productName": "My Sticky",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "사진이 절대 사라지지 않는 바탕화면 메모 앱",
   "main": "main.js",
   "private": true,
