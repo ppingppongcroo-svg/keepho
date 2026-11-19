@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <!-- 보안: 이 앱 파일과 memo-img:// 사진만 불러올 수 있어요 -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' memo-img: data:; style-src 'self'; script-src 'self'">
+  <title>My Sticky</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 맨 위 막대: 여기를 잡고 끌면 창이 움직여요 -->
+  <header id="bar">
+    <button id="new" title="새 메모 (Ctrl+N)">＋</button>
+    <div class="grow"></div>
+    <button id="color" title="색 바꾸기">●</button>
+    <button id="pin" title="항상 위에 고정">📌</button>
+    <button id="list" title="메모 목록">☰</button>
+    <button id="del" title="메모 삭제">🗑</button>
+    <button id="close" title="메모 닫기 (메모는 지워지지 않아요)">✕</button>
+  </header>
+
+  <div id="palette" hidden></div>
+
+  <!-- 글을 쓰는 곳 -->
+  <main id="editor" contenteditable="true" spellcheck="false" data-placeholder="메모를 적거나 사진을 붙여 넣으세요"></main>
+
+  <!-- 아래 서식 도구 -->
+  <footer id="tools">
+    <button data-cmd="bold" title="굵게 (Ctrl+B)"><b>B</b></button>
+    <button data-cmd="italic" title="기울임 (Ctrl+I)"><i>I</i></button>
+    <button data-cmd="underline" title="밑줄 (Ctrl+U)"><u>U</u></button>
+    <button data-cmd="strikeThrough" title="취소선"><s>S</s></button>
+    <button data-cmd="insertUnorderedList" title="글머리 기호 켜기/끄기 (Ctrl+Shift+L)">•≡</button>
+    <button id="addImage" title="이미지 추가">🖼</button>
+    <input id="imageFile" type="file" accept="image/*" multiple hidden>
+  </footer>
+
+  <script src="note.js"></script>
+</body>
+</html>

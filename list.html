@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' memo-img: data:; style-src 'self'; script-src 'self'">
+  <title>My Sticky</title>
+  <link rel="stylesheet" href="list.css">
+</head>
+<body>
+  <header>
+    <div class="top">
+      <h1>메모</h1>
+      <button id="new" title="새 메모 (Ctrl+N)">＋ 새 메모</button>
+    </div>
+    <input id="search" type="search" placeholder="검색" autocomplete="off">
+  </header>
+
+  <!-- 메모 카드들이 여기에 그려져요 -->
+  <main id="cards"></main>
+
+  <script src="list.js"></script>
+</body>
+</html>
