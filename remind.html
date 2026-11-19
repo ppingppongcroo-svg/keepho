@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'">
+  <title>알림 설정</title>
+  <link rel="stylesheet" href="remind.css">
+</head>
+<body>
+  <div class="dialog" id="dialog">
+    <!-- 머리: 여기를 잡고 창을 옮길 수 있어요 -->
+    <div class="d-head">
+      <span class="d-badge" data-icon="bell"></span>
+      <div class="d-titles">
+        <div class="d-title">알림 설정</div>
+        <div class="d-sub" id="noteTitle"></div>
+      </div>
+      <button id="closeX" class="ib" title="닫기 (Esc)" data-icon="x"></button>
+    </div>
+
+    <div class="d-body">
+      <div class="d-label">빠른 설정</div>
+      <div class="quick" id="quick"></div>
+
+      <div class="d-label">날짜</div>
+      <div class="cal">
+        <div class="cal-head">
+          <b id="monthTitle"></b>
+          <div class="cal-nav">
+            <button id="prevMonth" class="ib" title="이전 달" data-icon="chevronLeft"></button>
+            <button id="nextMonth" class="ib" title="다음 달" data-icon="chevronRight"></button>
+          </div>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+      </div>
+
+      <div class="d-label">시간</div>
+      <div class="time">
+        <div class="seg" id="ampm">
+          <button data-ampm="am">오전</button>
+          <button data-ampm="pm">오후</button>
+        </div>
+        <div class="spin">
+          <div class="box" id="hourBox">
+            <button class="arrow" data-step="60" title="1시간 늘리기" data-icon="chevronUp"></button>
+            <span class="val" id="hourVal"></span>
+            <button class="arrow" data-step="-60" title="1시간 줄이기" data-icon="chevronDown"></button>
+          </div>
+          <span class="colon">:</span>
+          <div class="box" id="minuteBox">
+            <button class="arrow" data-step="1" title="1분 늘리기" data-icon="chevronUp"></button>
+            <span class="val" id="minuteVal"></span>
+            <button class="arrow" data-step="-1" title="1분 줄이기" data-icon="chevronDown"></button>
+          </div>
+        </div>
+      </div>
+      <div class="pick">
+        <div><div class="pick-title">시</div><div class="pick-grid" id="hourGrid"></div></div>
+        <div><div class="pick-title">분</div><div class="pick-grid" id="minuteGrid"></div></div>
+      </div>
+
+      <div class="summary" id="summary">
+        <span data-icon="bell"></span>
+        <div class="sum-text"><small id="sumLabel">이때 알려 드려요</small><b id="sumWhen"></b></div>
+        <span class="sum-rel" id="sumRel"></span>
+      </div>
+    </div>
+
+    <div class="d-foot">
+      <button id="clearRemind" class="off" hidden><span data-icon="bellOff"></span>알림 끄기</button>
+      <div class="grow"></div>
+      <button id="cancel" class="btn ghost">취소</button>
+      <button id="save" class="btn dark">설정 완료</button>
+    </div>
+  </div>
+
+  <script src="icons.js"></script>
+  <script src="remind.js"></script>
+</body>
+</html>

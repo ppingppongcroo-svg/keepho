@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; img-src 'self' memo-img: data:; style-src 'self'; script-src 'self'">
-  <title>My Sticky</title>
+  <title>Keepho</title>
   <link rel="stylesheet" href="list.css">
 </head>
 <body>
@@ -12,11 +12,14 @@
     <div class="top">
       <h1>메모</h1>
       <div class="actions">
-        <button id="capture" class="ghost">📸 캡처</button>
-        <button id="new" title="새 메모 (Ctrl+N)">＋ 새 메모</button>
+        <button id="capture" class="ghost with-icon"><span data-icon="scan"></span>화면 캡처</button>
+        <button id="new" class="with-icon" title="새 메모 (Ctrl+N)"><span data-icon="plus"></span>새 메모</button>
       </div>
     </div>
-    <input id="search" type="search" placeholder="검색" autocomplete="off">
+    <label class="search-box">
+      <span data-icon="search"></span>
+      <input id="search" type="search" placeholder="메모 검색" autocomplete="off">
+    </label>
 
     <!-- 메모 / 휴지통 전환 -->
     <nav id="tabs">
@@ -33,6 +36,7 @@
   <!-- 메모 카드들이 여기에 그려져요 -->
   <main id="cards"></main>
 
+  <script src="icons.js"></script>
   <script src="list.js"></script>
 </body>
 </html>

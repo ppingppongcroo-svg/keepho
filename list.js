@@ -37,10 +37,12 @@ function daysLeft(deleted) {
   return Math.max(left, 0)
 }
 
-function smallButton(label, title, onClick) {
+// 카드 오른쪽 위 작은 버튼 (아이콘 + 글자, 글자는 없어도 돼요)
+function smallButton(iconName, label, title, onClick) {
   const btn = document.createElement('button')
-  btn.className = 'mini'
-  btn.textContent = label
+  btn.className = 'mini' + (label ? '' : ' icon-only')
+  btn.innerHTML = iconName ? iconSvg(iconName) : ''
+  if (label) btn.append(label)
   btn.title = title
   btn.onclick = e => {
     e.stopPropagation() // 카드 열기가 같이 눌리지 않게
@@ -73,7 +75,7 @@ function render() {
       ? '검색 결과가 없어요.'
       : inTrash
         ? '휴지통이 비어 있어요.'
-        : '메모가 없어요. ＋ 새 메모를 눌러 보세요.'
+        : '메모가 없어요. 새 메모를 눌러 보세요.'
     cards.append(p)
     return
   }
@@ -88,8 +90,16 @@ function render() {
     meta.className = 'meta'
     const labels = inTrash
       ? [`${daysLeft(note.deleted)}일 뒤 완전 삭제`]
-      : [formatDate(note.updated), note.open !== false && '열림', note.remind && `⏰ ${formatDate(note.remind)}`]
+      : [formatDate(note.updated), note.open !== false && '열림']
     meta.textContent = labels.filter(Boolean).join(' · ')
+    // 알림 표시: 울리는 중이면 빨간 칩, 예약돼 있으면 회색 칩
+    if (!inTrash && (note.alarming || note.remind)) {
+      const chip = document.createElement('span')
+      chip.className = 'remind-chip' + (note.alarming ? ' ringing' : '')
+      chip.innerHTML = iconSvg('bell')
+      chip.append(note.alarming ? '알림 울리는 중' : formatDate(note.remind))
+      meta.append(chip)
+    }
 
     const body = document.createElement('div')
     body.className = 'text' + (text ? '' : ' empty')
@@ -108,11 +118,11 @@ function render() {
     tools.className = 'tools'
     if (inTrash) {
       tools.append(
-        smallButton('↩ 복원', '메모 되살리기', () => window.memo.restore(note.id)),
-        smallButton('영구 삭제', '완전히 지우기', () => window.memo.purge(note.id)),
+        smallButton('restore', '복원', '메모 되살리기', () => window.memo.restore(note.id)),
+        smallButton(null, '영구 삭제', '완전히 지우기', () => window.memo.purge(note.id)),
       )
     } else {
-      tools.append(smallButton('🗑', '휴지통으로 이동', () => window.memo.remove(note.id)))
+      tools.append(smallButton('trash', '', '휴지통으로 이동', () => window.memo.remove(note.id)))
       card.onclick = () => window.memo.show(note.id)
     }
     card.append(tools)

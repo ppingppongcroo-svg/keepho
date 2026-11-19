@@ -1,14 +1,43 @@
 {
-  "name": "my-sticky",
-  "productName": "My Sticky",
-  "version": "0.3.0",
-  "description": "사진이 절대 사라지지 않는 바탕화면 메모 앱",
+  "name": "keepho",
+  "productName": "Keepho",
+  "version": "0.4.0",
+  "description": "키포 — 사진이 절대 사라지지 않는 바탕화면 메모 앱",
+  "author": "PPingppong",
   "main": "main.js",
   "private": true,
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.ppingppong.keepho",
+    "productName": "Keepho",
+    "files": [
+      "*.js",
+      "*.html",
+      "*.css",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Keepho",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Keepho-Setup-${version}.${ext}"
+    }
   },
   "devDependencies": {
-    "electron": "^45.4.1"
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
   }
 }

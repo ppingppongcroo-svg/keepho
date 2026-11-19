@@ -15,13 +15,23 @@ async function start() {
   editor.innerHTML = note.html || ''
   applyColor(note.color)
   $('#pin').classList.toggle('on', !!note.onTop)
-  buildPalette(note.color)
+  buildSwatches(note.color)
+  showOpacity(Math.round((note.opacity ?? 1) * 100))
   showRemind(note.remind)
+  if (note.alarming) startAlarm(note.alarming)
   editor.focus()
 }
 
 function applyColor(name) {
   document.documentElement.style.setProperty('--paper', colors[name] || colors.yellow)
+}
+
+// 시각을 "오후 3:30" 또는 "11월 20일 오전 9:00"처럼 보기 좋게
+function formatTime(ms) {
+  const d = new Date(ms)
+  const time = d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })
+  if (d.toDateString() === new Date().toDateString()) return time
+  return d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' }) + ' ' + time
 }
 
 // ── 글을 쓰면 저장 (0.4초 동안 멈추면 한 번) ─────────────────
@@ -93,93 +103,128 @@ $('#close').onclick = () => {
 }
 $('#pin').onclick = async () => $('#pin').classList.toggle('on', await window.memo.toggleTop(id))
 
-// 패널(색, 알림)은 한 번에 하나만 펼쳐요.
-function togglePanel(panel) {
-  const willOpen = panel.hidden
-  document.querySelectorAll('.panel').forEach(p => (p.hidden = true))
-  panel.hidden = !willOpen
-  return willOpen
+// ── 색상 · 투명도 카드 ───────────────────────────────────────
+const lookPop = $('#lookPop')
+
+function setPopover(open) {
+  lookPop.hidden = !open
+  $('#look').classList.toggle('on', open)
+  document.body.classList.toggle('popover-open', open)
 }
-$('#color').onclick = () => togglePanel($('#palette'))
-
-// ── ⏰ 알림 ──────────────────────────────────────────────────
-let remindAt = null
-
-// 시각을 "오후 3:00" 또는 "11월 20일 오전 9:00"처럼 보기 좋게
-function formatTime(ms) {
-  const d = new Date(ms)
-  const time = d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })
-  if (d.toDateString() === new Date().toDateString()) return time
-  return d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' }) + ' ' + time
+$('#look').onclick = e => {
+  e.stopPropagation()
+  setPopover(lookPop.hidden)
 }
+// 카드 바깥을 누르거나 Esc를 누르면 닫혀요.
+document.addEventListener('mousedown', e => {
+  if (!lookPop.hidden && !lookPop.contains(e.target) && !$('#look').contains(e.target)) setPopover(false)
+})
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !lookPop.hidden) setPopover(false)
+})
 
-// <input type="datetime-local">이 알아듣는 "2026-11-19T15:00" 형식으로
-function toInputValue(ms) {
-  const d = new Date(ms)
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
-  return d.toISOString().slice(0, 16)
-}
-
-function showRemind(ms) {
-  remindAt = ms || null
-  const badge = $('#remindBadge')
-  badge.hidden = !remindAt
-  if (remindAt) badge.textContent = '⏰ ' + formatTime(remindAt)
-  $('#remind').classList.toggle('on', !!remindAt)
-  $('#remindClear').hidden = !remindAt
-}
-
-async function setRemind(ms) {
-  if (ms !== null && !(ms > Date.now())) {
-    alert('지금보다 나중 시각을 골라 주세요.')
-    return
-  }
-  showRemind(await window.memo.setRemind(id, ms))
-  $('#remindPanel').hidden = true
-}
-
-function openRemindPanel() {
-  if (togglePanel($('#remindPanel'))) {
-    $('#remindAt').value = toInputValue(remindAt || Date.now() + 60 * 60 * 1000)
-  }
-}
-$('#remind').onclick = openRemindPanel
-$('#remindBadge').onclick = openRemindPanel
-
-for (const btn of document.querySelectorAll('#remindPanel [data-after]')) {
-  btn.onclick = () => setRemind(Date.now() + Number(btn.dataset.after) * 60 * 1000)
-}
-$('#tomorrow').onclick = () => {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  d.setHours(9, 0, 0, 0)
-  setRemind(d.getTime())
-}
-$('#remindSet').onclick = () => setRemind(new Date($('#remindAt').value).getTime())
-$('#remindClear').onclick = () => setRemind(null)
-
-// 알림이 울리면 본체가 알려줘요 → ⏰ 표시 지우기
-window.memo.onRemind(showRemind)
-
-function buildPalette(current) {
-  const palette = $('#palette')
+const COLOR_NAMES = { yellow: '노랑', green: '초록', pink: '분홍', purple: '보라', blue: '파랑', gray: '회색' }
+function buildSwatches(current) {
+  const box = $('#swatches')
   for (const [name, hex] of Object.entries(colors)) {
     const swatch = document.createElement('button')
     swatch.style.background = hex
-    swatch.title = name
+    swatch.title = COLOR_NAMES[name] || name
+    swatch.innerHTML = iconSvg('check')
     swatch.classList.toggle('on', name === current)
     swatch.onclick = () => {
       applyColor(name)
       window.memo.update(id, { color: name })
-      palette.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === swatch))
-      palette.hidden = true
+      box.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === swatch))
     }
-    palette.append(swatch)
+    box.append(swatch)
   }
 }
 
+// 투명도 슬라이더: 움직이는 동안 바로바로 반영돼요.
+function showOpacity(percent) {
+  const slider = $('#opacity')
+  slider.value = percent
+  $('#opacityValue').textContent = percent + '%'
+  const fill = ((percent - slider.min) / (slider.max - slider.min)) * 100
+  slider.style.setProperty('--fill', fill + '%')
+}
+$('#opacity').addEventListener('input', e => {
+  const percent = Number(e.target.value)
+  showOpacity(percent)
+  window.memo.setOpacity(id, percent / 100)
+})
+
+// ── 알림 ─────────────────────────────────────────────────────
+// 종 아이콘이나 시각 칩을 누르면 알림 설정 창이 떠요.
+function showRemind(ms) {
+  const chip = $('#remindChip')
+  chip.hidden = !ms
+  if (ms) chip.querySelector('.chip-text').textContent = formatTime(ms)
+  $('#remind').classList.toggle('on', !!ms)
+}
+$('#remind').onclick = () => window.memo.openRemind(id)
+$('#remindChip').onclick = () => window.memo.openRemind(id)
+window.memo.onRemind(showRemind)
+
+// ── 알림이 울릴 때: 확인을 누를 때까지 깜빡이고 1분마다 알림음 ─────
+let chimeTimer = null
+let chimeCount = 0
+const CHIME_MAX = 10
+
+// "띵-동" 소리를 코드로 만들어요. (소리 파일 없이)
+function chime() {
+  try {
+    const ctx = new AudioContext()
+    const notes = [
+      { freq: 880, at: 0 },
+      { freq: 659.25, at: 0.28 },
+    ]
+    for (const { freq, at } of notes) {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      const t = ctx.currentTime + at
+      gain.gain.setValueAtTime(0.0001, t)
+      gain.gain.exponentialRampToValueAtTime(0.25, t + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.1)
+      osc.connect(gain).connect(ctx.destination)
+      osc.start(t)
+      osc.stop(t + 1.2)
+    }
+    setTimeout(() => ctx.close(), 1800)
+  } catch {
+    // 소리 장치가 없어도 알림은 계속돼요.
+  }
+}
+
+function startAlarm(at) {
+  document.body.classList.add('alarming')
+  $('#alarmBar').hidden = false
+  $('#alarmBar .alarm-text').textContent = '알림 · ' + formatTime(at)
+  if (chimeTimer) return
+  chimeCount = 1
+  chime()
+  chimeTimer = setInterval(() => {
+    if (++chimeCount > CHIME_MAX) return clearInterval(chimeTimer)
+    chime()
+  }, 60 * 1000)
+}
+
+function stopAlarm() {
+  document.body.classList.remove('alarming')
+  $('#alarmBar').hidden = true
+  clearInterval(chimeTimer)
+  chimeTimer = null
+}
+
+$('#ack').onclick = () => window.memo.ackAlarm(id)
+$('#snooze').onclick = () => window.memo.snooze(id, 10)
+window.memo.onAlarm(at => (at ? startAlarm(at) : stopAlarm()))
+
 // ── 아래 서식 버튼 ───────────────────────────────────────────
-// 🖼 이미지 추가: 파일 고르기 창을 열고, 고른 사진을 넣어요.
+// 사진 추가: 파일 고르기 창을 열고, 고른 사진을 넣어요.
 let savedRange = null
 $('#addImage').addEventListener('mousedown', e => {
   e.preventDefault()
@@ -238,7 +283,7 @@ function makeChecklist(ul) {
   }
 }
 
-// ☑ 버튼: 일반 글 → 체크리스트 → 일반 글
+// 체크리스트 버튼: 일반 글 → 체크리스트 → 일반 글
 function toggleChecklist() {
   editor.focus()
   const ul = currentList()
@@ -254,7 +299,7 @@ function toggleChecklist() {
   editor.dispatchEvent(new Event('input'))
 }
 
-// •≡ 버튼: 체크리스트 안에서 누르면 일반 글머리 기호로 바꿔요.
+// 글머리 기호 버튼: 체크리스트 안에서 누르면 일반 글머리 기호로 바꿔요.
 function toggleBullets() {
   editor.focus()
   const ul = currentList()

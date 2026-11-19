@@ -5,38 +5,42 @@
   <!-- 보안: 이 앱 파일과 memo-img:// 사진만 불러올 수 있어요 -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; img-src 'self' memo-img: data:; style-src 'self'; script-src 'self'">
-  <title>My Sticky</title>
+  <title>Keepho</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <!-- 맨 위 막대: 여기를 잡고 끌면 창이 움직여요 -->
   <header id="bar">
-    <button id="new" title="새 메모 (Ctrl+N)">＋</button>
-    <button id="remindBadge" class="badge" title="알림 시각 (눌러서 바꾸기)" hidden></button>
+    <button id="new" class="icon-btn" title="새 메모 (Ctrl+N)" data-icon="plus"></button>
+    <button id="remindChip" class="chip" title="알림 시각 · 눌러서 바꾸기" hidden>
+      <span data-icon="bell"></span><span class="chip-text"></span>
+    </button>
     <div class="grow"></div>
-    <button id="color" title="색 바꾸기">●</button>
-    <button id="remind" title="알림 설정">⏰</button>
-    <button id="pin" title="항상 위에 고정">📌</button>
-    <button id="list" title="메모 목록">☰</button>
-    <button id="del" title="휴지통으로 이동">🗑</button>
-    <button id="close" title="메모 닫기 (메모는 지워지지 않아요)">✕</button>
+    <button id="look" class="icon-btn" title="색상 · 투명도" data-icon="palette"></button>
+    <button id="remind" class="icon-btn" title="알림 설정" data-icon="bell"></button>
+    <button id="pin" class="icon-btn" title="항상 위에 고정" data-icon="pin"></button>
+    <button id="list" class="icon-btn" title="모든 메모" data-icon="grid"></button>
+    <button id="del" class="icon-btn" title="휴지통으로 이동" data-icon="trash"></button>
+    <button id="close" class="icon-btn" title="메모 닫기 (메모는 지워지지 않아요)" data-icon="x"></button>
   </header>
 
-  <div id="palette" class="panel" hidden></div>
+  <!-- 알림이 울리는 중일 때만 보이는 줄 -->
+  <div id="alarmBar" hidden>
+    <span class="ringing" data-icon="bell"></span>
+    <span class="alarm-text">알림</span>
+    <div class="grow"></div>
+    <button id="snooze" class="text-btn">10분 뒤 다시</button>
+    <button id="ack" class="solid-btn">확인</button>
+  </div>
 
-  <!-- ⏰ 알림 설정 -->
-  <div id="remindPanel" class="panel" hidden>
-    <div class="row">
-      <button data-after="30">30분 뒤</button>
-      <button data-after="60">1시간 뒤</button>
-      <button data-after="180">3시간 뒤</button>
-      <button id="tomorrow">내일 오전 9시</button>
+  <!-- 색상 · 투명도 (팔레트 아이콘을 누르면 떠요) -->
+  <div id="lookPop" class="popover" hidden>
+    <div class="pop-label">색상</div>
+    <div id="swatches"></div>
+    <div class="pop-label with-value">
+      <span>투명도</span><span id="opacityValue">100%</span>
     </div>
-    <div class="row">
-      <input id="remindAt" type="datetime-local">
-      <button id="remindSet">설정</button>
-      <button id="remindClear" hidden>해제</button>
-    </div>
+    <input id="opacity" type="range" min="40" max="100" step="5" value="100">
   </div>
 
   <!-- 글을 쓰는 곳 -->
@@ -44,16 +48,18 @@
 
   <!-- 아래 서식 도구 -->
   <footer id="tools">
-    <button data-cmd="bold" title="굵게 (Ctrl+B)"><b>B</b></button>
-    <button data-cmd="italic" title="기울임 (Ctrl+I)"><i>I</i></button>
-    <button data-cmd="underline" title="밑줄 (Ctrl+U)"><u>U</u></button>
-    <button data-cmd="strikeThrough" title="취소선"><s>S</s></button>
-    <button data-cmd="insertUnorderedList" title="글머리 기호 켜기/끄기 (Ctrl+Shift+L)">•≡</button>
-    <button id="check" title="체크리스트 켜기/끄기 (Ctrl+Shift+C)">☑</button>
-    <button id="addImage" title="이미지 추가">🖼</button>
+    <button data-cmd="bold" class="fmt-btn" title="굵게 (Ctrl+B)"><b>B</b></button>
+    <button data-cmd="italic" class="fmt-btn" title="기울임 (Ctrl+I)"><i>I</i></button>
+    <button data-cmd="underline" class="fmt-btn" title="밑줄 (Ctrl+U)"><u>U</u></button>
+    <button data-cmd="strikeThrough" class="fmt-btn" title="취소선"><s>S</s></button>
+    <span class="sep"></span>
+    <button data-cmd="insertUnorderedList" class="icon-btn" title="글머리 기호 (Ctrl+Shift+L)" data-icon="list"></button>
+    <button id="check" class="icon-btn" title="체크리스트 (Ctrl+Shift+C)" data-icon="checkSquare"></button>
+    <button id="addImage" class="icon-btn" title="사진 추가" data-icon="image"></button>
     <input id="imageFile" type="file" accept="image/*" multiple hidden>
   </footer>
 
+  <script src="icons.js"></script>
   <script src="note.js"></script>
 </body>
 </html>

@@ -18,7 +18,7 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 // 윈도우 알림에 표시될 앱 이름표
-app.setAppUserModelId(app.isPackaged ? 'com.ppingppong.mysticky' : process.execPath)
+app.setAppUserModelId(app.isPackaged ? 'com.ppingppong.keepho' : process.execPath)
 
 // ── 설정값 ───────────────────────────────────────────────────
 const TRASH_DAYS = 30 // 휴지통 보관 기간
@@ -26,10 +26,22 @@ const CAPTURE_KEY = 'Ctrl+Alt+S' // 화면 캡처 단축키 (어느 프로그램
 const REMIND_CHECK_MS = 15 * 1000 // 알림 시간을 확인하는 간격
 
 // ── 저장 위치 ────────────────────────────────────────────────
-// %APPDATA%\My Sticky 폴더 안에 notes.json(메모)과 images\(사진)를 둬요.
+// %APPDATA%\Keepho 폴더 안에 notes.json(메모)과 images\(사진)를 둬요.
 const dataDir = () => app.getPath('userData')
 const notesFile = () => path.join(dataDir(), 'notes.json')
 const imageDir = () => path.join(dataDir(), 'images')
+
+// 예전 이름(My Sticky) 시절의 메모를 새 폴더로 복사해 와요. (새 폴더가 비어 있을 때 한 번만)
+// 옮기지 않고 복사하니까, 예전 폴더는 백업처럼 그대로 남아요.
+function bringOldNotes() {
+  const oldDir = path.join(app.getPath('appData'), 'My Sticky')
+  if (fs.existsSync(notesFile()) || !fs.existsSync(path.join(oldDir, 'notes.json'))) return
+  fs.mkdirSync(dataDir(), { recursive: true })
+  if (fs.existsSync(path.join(oldDir, 'images'))) {
+    fs.cpSync(path.join(oldDir, 'images'), imageDir(), { recursive: true })
+  }
+  fs.copyFileSync(path.join(oldDir, 'notes.json'), notesFile())
+}
 
 const COLORS = {
   yellow: '#FFF4A3',
@@ -128,13 +140,20 @@ function openWindow(note) {
     minWidth: 260,
     minHeight: 160,
     frame: false, // 윈도우 기본 제목줄 없이, 우리가 만든 막대를 써요
-    alwaysOnTop: !!note.onTop,
+    alwaysOnTop: !!note.onTop || !!note.alarming,
+    opacity: note.opacity ?? 1,
     backgroundColor: COLORS[note.color] || COLORS.yellow,
     show: false,
-    webPreferences: { preload: path.join(__dirname, 'preload.js') },
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      autoplayPolicy: 'no-user-gesture-required', // 알림음이 바로 울리게
+    },
   })
   win.loadFile(path.join(__dirname, 'note.html'), { query: { id: note.id } })
-  win.once('ready-to-show', () => win.show())
+  win.once('ready-to-show', () => {
+    win.show()
+    if (note.alarming) win.flashFrame(true) // 울리는 중이던 알림이면 계속 깜빡
+  })
 
   // 창을 옮기거나 크기를 바꾸면 기억해 둬요.
   const remember = () => {
@@ -201,7 +220,7 @@ function showList() {
     height: 580,
     minWidth: 300,
     minHeight: 320,
-    title: 'My Sticky',
+    title: 'Keepho',
     backgroundColor: '#F7F7F5',
     show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js') },
@@ -221,23 +240,129 @@ function checkReminders() {
   }
 }
 
+// 알림이 울리면 note.alarming에 울린 시각을 적어 둬요.
+// [확인]을 누를 때까지 메모가 맨 위에 고정되고, 깜빡이고, 1분마다 소리가 나요.
+// 앱을 껐다 켜도 alarming이 남아 있으면 다시 울려요.
 function fireReminder(note) {
+  note.alarming = note.remind
   note.remind = null
   save()
   showNote(note.id)
   const win = windows.get(note.id)
-  win?.webContents.send('note:remind', null) // 메모 창의 ⏰ 표시 지우기
-  win?.flashFrame(true) // 작업 표시줄에서 깜빡깜빡
+  if (win) {
+    win.setAlwaysOnTop(true, 'floating')
+    win.flashFrame(true) // 작업 표시줄에서 깜빡깜빡
+    win.webContents.send('note:remind', null) // 막대의 알림 칩 지우기
+    win.webContents.send('note:alarm', note.alarming) // 깜빡임 + 소리 시작
+  }
 
   if (Notification.isSupported()) {
     const toast = new Notification({
-      title: '⏰ My Sticky 알림',
+      title: 'Keepho 알림',
       body: textOf(note.html).slice(0, 120) || '(사진 메모)',
     })
     toast.on('click', () => showNote(note.id))
     toast.show()
   }
 }
+
+// 알림을 멈추고 원래대로 (확인 / 10분 뒤 다시 / 휴지통)
+function stopAlarm(note) {
+  if (!note.alarming) return
+  note.alarming = null
+  const win = windows.get(note.id)
+  if (win) {
+    win.setAlwaysOnTop(!!note.onTop)
+    win.flashFrame(false)
+    win.webContents.send('note:alarm', null)
+  }
+}
+
+// ── 알림 설정 창 ─────────────────────────────────────────────
+// 메모 옆에 뜨는 작은 창이에요. 창 자체는 투명하고 안에 카드를 그려요.
+let remindWin = null
+
+function openRemind(id) {
+  const parent = windows.get(id)
+  if (!parent) return
+  if (remindWin) {
+    remindWin.focus()
+    return
+  }
+  const W = 372
+  const H = 680 // 내용을 그린 뒤 실제 높이로 맞춰요 (dialog:fit)
+  remindWin = new BrowserWindow({
+    width: W,
+    height: H,
+    parent,
+    modal: true, // 설정 창이 떠 있는 동안 메모는 잠깐 멈춰요
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    skipTaskbar: true,
+    show: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.js') },
+  })
+  placeBeside(remindWin, parent, W, H)
+  remindWin.loadFile(path.join(__dirname, 'remind.html'), { query: { id } })
+  // 혹시 크기 맞추기가 늦어져도 1초 뒤엔 보여줘요.
+  const fallback = setTimeout(() => remindWin?.show(), 1000)
+  remindWin.on('closed', () => {
+    clearTimeout(fallback)
+    remindWin = null
+  })
+}
+
+// 창을 메모 오른쪽에 붙여요. 자리가 없으면 왼쪽, 그래도 없으면 화면 가운데.
+function placeBeside(win, parent, W, H) {
+  const pb = parent.getBounds()
+  const area = screen.getDisplayMatching(pb).workArea
+  let x = pb.x + pb.width + 4
+  if (x + W > area.x + area.width) x = pb.x - W - 4
+  if (x < area.x) x = Math.round(area.x + (area.width - W) / 2)
+  const y = Math.max(area.y, Math.min(pb.y - 14, area.y + area.height - H))
+  win.setBounds({ x, y, width: W, height: H })
+}
+
+ipcMain.on('dialog:fit', (e, height) => {
+  const win = BrowserWindow.fromWebContents(e.sender)
+  if (!win || win !== remindWin) return
+  const area = screen.getDisplayMatching(win.getBounds()).workArea
+  const H = Math.min(Math.ceil(height), area.height)
+  const parent = win.getParentWindow()
+  if (parent) placeBeside(win, parent, win.getBounds().width, H)
+  win.show()
+})
+
+ipcMain.on('note:openRemind', (_e, id) => openRemind(id))
+
+ipcMain.on('note:ackAlarm', (_e, id) => {
+  if (!notes[id]) return
+  stopAlarm(notes[id])
+  save()
+})
+
+// 10분 뒤 다시
+ipcMain.on('note:snooze', (_e, id, minutes) => {
+  const note = notes[id]
+  if (!note) return
+  stopAlarm(note)
+  note.remind = Date.now() + (Number(minutes) || 10) * 60 * 1000
+  save()
+  windows.get(id)?.webContents.send('note:remind', note.remind)
+})
+
+// 투명도 (40% ~ 100%)
+ipcMain.on('note:setOpacity', (_e, id, value) => {
+  const note = notes[id]
+  if (!note) return
+  note.opacity = Math.min(1, Math.max(0.4, Number(value) || 1))
+  windows.get(id)?.setOpacity(note.opacity)
+  save()
+})
 
 // ── 📸 화면 캡처 ─────────────────────────────────────────────
 // 1) 마우스가 있는 모니터를 통째로 찍고
@@ -365,6 +490,7 @@ ipcMain.on('note:close', (_e, id) => {
 ipcMain.handle('note:delete', (_e, id) => {
   const note = notes[id]
   if (!note) return false
+  stopAlarm(note)
   note.deleted = Date.now()
   note.open = false
   saveNow()
@@ -419,7 +545,7 @@ ipcMain.handle('note:toggleTop', (_e, id) => {
   const note = notes[id]
   if (!note) return false
   note.onTop = !note.onTop
-  windows.get(id)?.setAlwaysOnTop(note.onTop)
+  windows.get(id)?.setAlwaysOnTop(note.onTop || !!note.alarming) // 울리는 중엔 계속 위에
   save()
   return note.onTop
 })
@@ -430,6 +556,7 @@ ipcMain.handle('note:setRemind', (_e, id, ms) => {
   if (!note) return null
   note.remind = Number.isFinite(ms) && ms > Date.now() ? ms : null
   save()
+  windows.get(id)?.webContents.send('note:remind', note.remind) // 메모 막대의 알림 칩 갱신
   return note.remind
 })
 
@@ -457,6 +584,7 @@ if (!app.requestSingleInstanceLock()) {
       return net.fetch(pathToFileURL(path.join(imageDir(), name)).toString())
     })
 
+    bringOldNotes()
     loadNotes()
     cleanUp()
     const alive = Object.values(notes).filter(n => !n.deleted)
