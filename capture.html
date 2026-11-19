@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src data:; style-src 'self'; script-src 'self'">
+  <title>My Sticky 캡처</title>
+  <link rel="stylesheet" href="capture.css">
+</head>
+<body>
+  <!-- 찍어 둔 화면 사진을 깔고, 그 위에서 영역을 골라요 -->
+  <img id="shot" alt="">
+  <div id="dim"></div>
+  <div id="sel" hidden><span id="size"></span></div>
+  <div id="hint">드래그해서 캡처할 영역을 고르세요 · Esc 또는 오른쪽 클릭으로 취소</div>
+  <script src="capture.js"></script>
+</body>
+</html>

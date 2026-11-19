@@ -16,6 +16,7 @@ async function start() {
   applyColor(note.color)
   $('#pin').classList.toggle('on', !!note.onTop)
   buildPalette(note.color)
+  showRemind(note.remind)
   editor.focus()
 }
 
@@ -82,13 +83,83 @@ editor.addEventListener('drop', e => {
 // ── 위 막대 버튼 ─────────────────────────────────────────────
 $('#new').onclick = () => window.memo.create(id)
 $('#list').onclick = () => window.memo.showList()
-$('#del').onclick = () => window.memo.remove(id)
+$('#del').onclick = () => {
+  flush()
+  window.memo.remove(id) // 휴지통으로 (30일 동안 복원 가능)
+}
 $('#close').onclick = () => {
   flush()
   window.memo.close(id)
 }
 $('#pin').onclick = async () => $('#pin').classList.toggle('on', await window.memo.toggleTop(id))
-$('#color').onclick = () => ($('#palette').hidden = !$('#palette').hidden)
+
+// 패널(색, 알림)은 한 번에 하나만 펼쳐요.
+function togglePanel(panel) {
+  const willOpen = panel.hidden
+  document.querySelectorAll('.panel').forEach(p => (p.hidden = true))
+  panel.hidden = !willOpen
+  return willOpen
+}
+$('#color').onclick = () => togglePanel($('#palette'))
+
+// ── ⏰ 알림 ──────────────────────────────────────────────────
+let remindAt = null
+
+// 시각을 "오후 3:00" 또는 "11월 20일 오전 9:00"처럼 보기 좋게
+function formatTime(ms) {
+  const d = new Date(ms)
+  const time = d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })
+  if (d.toDateString() === new Date().toDateString()) return time
+  return d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' }) + ' ' + time
+}
+
+// <input type="datetime-local">이 알아듣는 "2026-11-19T15:00" 형식으로
+function toInputValue(ms) {
+  const d = new Date(ms)
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
+  return d.toISOString().slice(0, 16)
+}
+
+function showRemind(ms) {
+  remindAt = ms || null
+  const badge = $('#remindBadge')
+  badge.hidden = !remindAt
+  if (remindAt) badge.textContent = '⏰ ' + formatTime(remindAt)
+  $('#remind').classList.toggle('on', !!remindAt)
+  $('#remindClear').hidden = !remindAt
+}
+
+async function setRemind(ms) {
+  if (ms !== null && !(ms > Date.now())) {
+    alert('지금보다 나중 시각을 골라 주세요.')
+    return
+  }
+  showRemind(await window.memo.setRemind(id, ms))
+  $('#remindPanel').hidden = true
+}
+
+function openRemindPanel() {
+  if (togglePanel($('#remindPanel'))) {
+    $('#remindAt').value = toInputValue(remindAt || Date.now() + 60 * 60 * 1000)
+  }
+}
+$('#remind').onclick = openRemindPanel
+$('#remindBadge').onclick = openRemindPanel
+
+for (const btn of document.querySelectorAll('#remindPanel [data-after]')) {
+  btn.onclick = () => setRemind(Date.now() + Number(btn.dataset.after) * 60 * 1000)
+}
+$('#tomorrow').onclick = () => {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  d.setHours(9, 0, 0, 0)
+  setRemind(d.getTime())
+}
+$('#remindSet').onclick = () => setRemind(new Date($('#remindAt').value).getTime())
+$('#remindClear').onclick = () => setRemind(null)
+
+// 알림이 울리면 본체가 알려줘요 → ⏰ 표시 지우기
+window.memo.onRemind(showRemind)
 
 function buildPalette(current) {
   const palette = $('#palette')

@@ -11,9 +11,23 @@
   <header>
     <div class="top">
       <h1>메모</h1>
-      <button id="new" title="새 메모 (Ctrl+N)">＋ 새 메모</button>
+      <div class="actions">
+        <button id="capture" class="ghost">📸 캡처</button>
+        <button id="new" title="새 메모 (Ctrl+N)">＋ 새 메모</button>
+      </div>
     </div>
     <input id="search" type="search" placeholder="검색" autocomplete="off">
+
+    <!-- 메모 / 휴지통 전환 -->
+    <nav id="tabs">
+      <button data-tab="notes" class="on">메모</button>
+      <button data-tab="trash">휴지통 <span id="trashCount"></span></button>
+    </nav>
+
+    <div id="trashBar" hidden>
+      <span id="trashInfo"></span>
+      <button id="emptyTrash" class="ghost">휴지통 비우기</button>
+    </div>
   </header>
 
   <!-- 메모 카드들이 여기에 그려져요 -->

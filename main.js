@@ -1,9 +1,12 @@
 // ─────────────────────────────────────────────────────────────
 // main.js — 앱의 "본체(메인 프로세스)"
-// 창을 만들고, 메모와 사진을 파일로 저장하는 일을 맡아요.
-// 화면(note.html, list.html)은 파일에 직접 손대지 못하고, 여기에 부탁만 해요. (보안)
+// 창을 만들고, 메모와 사진을 파일로 저장하고, 알림과 화면 캡처를 맡아요.
+// 화면(note.html, list.html, capture.html)은 파일에 직접 손대지 못하고, 여기에 부탁만 해요. (보안)
 // ─────────────────────────────────────────────────────────────
-const { app, BrowserWindow, ipcMain, protocol, net, Menu, dialog } = require('electron')
+const {
+  app, BrowserWindow, ipcMain, protocol, net, Menu, dialog,
+  Notification, globalShortcut, desktopCapturer, screen,
+} = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const crypto = require('node:crypto')
@@ -13,6 +16,14 @@ const { pathToFileURL } = require('node:url')
 protocol.registerSchemesAsPrivileged([
   { scheme: 'memo-img', privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ])
+
+// 윈도우 알림에 표시될 앱 이름표
+app.setAppUserModelId(app.isPackaged ? 'com.ppingppong.mysticky' : process.execPath)
+
+// ── 설정값 ───────────────────────────────────────────────────
+const TRASH_DAYS = 30 // 휴지통 보관 기간
+const CAPTURE_KEY = 'Ctrl+Alt+S' // 화면 캡처 단축키 (어느 프로그램에서든)
+const REMIND_CHECK_MS = 15 * 1000 // 알림 시간을 확인하는 간격
 
 // ── 저장 위치 ────────────────────────────────────────────────
 // %APPDATA%\My Sticky 폴더 안에 notes.json(메모)과 images\(사진)를 둬요.
@@ -29,7 +40,9 @@ const COLORS = {
   gray: '#ECECEC',
 }
 
-// 메모 하나: { id, html, color, x, y, w, h, onTop, open(창이 열려 있는지), updated(마지막 수정 시각) }
+// 메모 하나: { id, html, color, x, y, w, h, onTop,
+//            open(창이 열려 있는지), updated(마지막 수정 시각),
+//            remind(알림 시각, 없으면 null), deleted(휴지통에 들어간 시각, 없으면 없음) }
 let notes = {}
 const windows = new Map() // 메모id → 열린 메모 창
 let listWin = null // 메모 목록 창
@@ -65,8 +78,39 @@ function imagesIn(html) {
   return [...(html || '').matchAll(/memo-img:\/\/img\/([\w.-]+)/g)].map(m => m[1])
 }
 
-// 앱을 켤 때, 어느 메모에서도 안 쓰는 사진 파일을 정리해요.
-function cleanUnusedImages() {
+// 메모 html에서 글자만 뽑아요. (알림 내용에 써요)
+function textOf(html) {
+  return (html || '')
+    .replace(/<br\s*\/?>|<\/(p|div|li)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/\n{2,}/g, '\n')
+    .trim()
+}
+
+// 사진 데이터를 images 폴더에 파일로 저장하고, 불러올 주소를 돌려줘요.
+function saveImageFile(bytes, ext) {
+  fs.mkdirSync(imageDir(), { recursive: true })
+  const name = `${crypto.randomUUID()}.${ext}`
+  fs.writeFileSync(path.join(imageDir(), name), Buffer.from(bytes))
+  return `memo-img://img/${name}`
+}
+
+// 메모를 완전히 지워요. (사진 파일까지)
+function purgeNote(id) {
+  for (const file of imagesIn(notes[id]?.html)) fs.rmSync(path.join(imageDir(), file), { force: true })
+  delete notes[id]
+}
+
+// 앱을 켤 때: 30일 지난 휴지통 메모를 비우고, 어디에도 안 쓰는 사진을 정리해요.
+function cleanUp() {
+  const limit = Date.now() - TRASH_DAYS * 24 * 60 * 60 * 1000
+  for (const note of Object.values(notes)) {
+    if (note.deleted && note.deleted < limit) purgeNote(note.id)
+  }
   if (!fs.existsSync(imageDir())) return
   const used = new Set(Object.values(notes).flatMap(n => imagesIn(n.html)))
   for (const file of fs.readdirSync(imageDir())) {
@@ -81,7 +125,7 @@ function openWindow(note) {
     y: note.y,
     width: note.w,
     height: note.h,
-    minWidth: 240,
+    minWidth: 260,
     minHeight: 160,
     frame: false, // 윈도우 기본 제목줄 없이, 우리가 만든 막대를 써요
     alwaysOnTop: !!note.onTop,
@@ -110,10 +154,11 @@ function openWindow(note) {
 // 메모를 화면에 띄워요. 이미 열려 있으면 앞으로 가져오기만 해요.
 function showNote(id) {
   const note = notes[id]
-  if (!note) return
+  if (!note || note.deleted) return
   const win = windows.get(id)
   if (win) {
     if (win.isMinimized()) win.restore()
+    win.show()
     win.focus()
     return
   }
@@ -122,17 +167,26 @@ function showNote(id) {
   openWindow(note).focus()
 }
 
-function createNote(nearId) {
+function createNote(nearId, init = {}) {
   const id = crypto.randomUUID()
   const near = nearId && windows.get(nearId)
   const b = near ? near.getBounds() : { x: 160, y: 160 }
   notes[id] = {
     id, html: '', color: 'yellow',
     x: b.x + 30, y: b.y + 30, w: 300, h: 300,
-    onTop: false, open: true, updated: Date.now(),
+    onTop: false, open: true, remind: null, updated: Date.now(),
+    ...init,
   }
   save()
   openWindow(notes[id]).focus()
+}
+
+// 메모 창을 닫아요. 마지막 창이면 앱이 꺼지지 않게 목록 창을 먼저 띄워요.
+function closeNoteWindow(id) {
+  const win = windows.get(id)
+  if (!win) return
+  if (windows.size <= 1 && !listWin) showList()
+  win.close()
 }
 
 // ── 메모 목록 창 ─────────────────────────────────────────────
@@ -143,10 +197,10 @@ function showList() {
     return
   }
   listWin = new BrowserWindow({
-    width: 360,
-    height: 560,
-    minWidth: 280,
-    minHeight: 300,
+    width: 380,
+    height: 580,
+    minWidth: 300,
+    minHeight: 320,
     title: 'My Sticky',
     backgroundColor: '#F7F7F5',
     show: false,
@@ -157,12 +211,127 @@ function showList() {
   listWin.on('closed', () => (listWin = null))
 }
 
+// ── ⏰ 알림 ──────────────────────────────────────────────────
+// 15초마다 시간이 된 알림이 있는지 확인해요.
+// 앱이 꺼져 있는 동안 지나간 알림은 앱을 켤 때 바로 울려요.
+function checkReminders() {
+  const now = Date.now()
+  for (const note of Object.values(notes)) {
+    if (!note.deleted && note.remind && note.remind <= now) fireReminder(note)
+  }
+}
+
+function fireReminder(note) {
+  note.remind = null
+  save()
+  showNote(note.id)
+  const win = windows.get(note.id)
+  win?.webContents.send('note:remind', null) // 메모 창의 ⏰ 표시 지우기
+  win?.flashFrame(true) // 작업 표시줄에서 깜빡깜빡
+
+  if (Notification.isSupported()) {
+    const toast = new Notification({
+      title: '⏰ My Sticky 알림',
+      body: textOf(note.html).slice(0, 120) || '(사진 메모)',
+    })
+    toast.on('click', () => showNote(note.id))
+    toast.show()
+  }
+}
+
+// ── 📸 화면 캡처 ─────────────────────────────────────────────
+// 1) 마우스가 있는 모니터를 통째로 찍고
+// 2) 그 사진을 화면 전체에 띄운 창(capture.html)에서 영역을 고르게 한 뒤
+// 3) 고른 부분만 잘라서 새 메모로 만들어요.
+let captureWin = null
+let captureShot = null // { image, display }
+
+async function startCapture() {
+  if (captureWin) return
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  const sf = display.scaleFactor
+  const sources = await desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize: {
+      width: Math.round(display.size.width * sf),
+      height: Math.round(display.size.height * sf),
+    },
+  })
+  const source = sources.find(s => s.display_id === String(display.id)) || sources[0]
+  if (!source) return
+
+  captureShot = { image: source.thumbnail, display }
+  captureWin = new BrowserWindow({
+    ...display.bounds,
+    frame: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    skipTaskbar: true,
+    enableLargerThanScreen: true,
+    backgroundColor: '#000000',
+    show: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.js') },
+  })
+  captureWin.setAlwaysOnTop(true, 'screen-saver')
+  captureWin.setBounds(display.bounds)
+  captureWin.loadFile(path.join(__dirname, 'capture.html'))
+  captureWin.once('ready-to-show', () => {
+    captureWin.show()
+    captureWin.focus()
+  })
+  captureWin.on('closed', () => {
+    captureWin = null
+    captureShot = null
+  })
+}
+
+// 캡처 창에 보여줄 화면 사진 (가볍게 JPG로)
+ipcMain.handle('capture:image', () =>
+  captureShot ? 'data:image/jpeg;base64,' + captureShot.image.toJPEG(85).toString('base64') : null,
+)
+
+// 영역을 다 골랐을 때: 원본에서 그 부분만 잘라 새 메모로
+ipcMain.on('capture:done', (_e, rect) => {
+  if (!captureShot) return
+  const { image, display } = captureShot
+  const size = image.getSize()
+  const sx = size.width / display.bounds.width // 화면 배율(125%, 150% 등) 맞추기
+  const sy = size.height / display.bounds.height
+  const png = image
+    .crop({
+      x: Math.round(rect.x * sx),
+      y: Math.round(rect.y * sy),
+      width: Math.max(1, Math.round(rect.w * sx)),
+      height: Math.max(1, Math.round(rect.h * sy)),
+    })
+    .toPNG()
+  captureWin?.close()
+
+  const url = saveImageFile(png, 'png')
+  const w = Math.min(Math.max(rect.w + 30, 260), 560)
+  const h = Math.min(Math.max(Math.round((rect.h * (w - 30)) / rect.w) + 110, 200), 720)
+  createNote(null, {
+    html: `<img src="${url}" alt=""><div><br></div>`,
+    x: display.bounds.x + rect.x,
+    y: display.bounds.y + rect.y,
+    w,
+    h,
+  })
+})
+
+ipcMain.on('capture:cancel', () => captureWin?.close())
+ipcMain.on('capture:start', () => startCapture())
+
 // ── 화면이 부탁하는 일들 ─────────────────────────────────────
 ipcMain.handle('note:get', (_e, id) => ({ ...notes[id], colors: COLORS }))
 
-// 목록 창용: 모든 메모를 최근 수정 순서로
+// 목록 창용: 모든 메모(휴지통 포함)를 최근 수정 순서로
 ipcMain.handle('note:all', () => ({
   colors: COLORS,
+  trashDays: TRASH_DAYS,
+  captureKey: CAPTURE_KEY,
   notes: Object.values(notes).sort((a, b) => (b.updated || 0) - (a.updated || 0)),
 }))
 
@@ -189,30 +358,60 @@ ipcMain.on('list:show', () => showList())
 ipcMain.on('note:close', (_e, id) => {
   if (notes[id]) notes[id].open = false
   saveNow()
-  // 마지막 메모를 닫으면 앱이 꺼지지 않게 목록 창을 먼저 띄워요.
-  if (windows.size <= 1 && !listWin) showList()
-  windows.get(id)?.close()
+  closeNoteWindow(id)
 })
 
-ipcMain.handle('note:delete', async (e, id) => {
-  const parent = BrowserWindow.fromWebContents(e.sender)
-  const { response } = await dialog.showMessageBox(parent, {
-    type: 'question',
-    buttons: ['삭제', '취소'],
+// 🗑 버튼: 휴지통으로 옮겨요. (30일 동안 복원 가능)
+ipcMain.handle('note:delete', (_e, id) => {
+  const note = notes[id]
+  if (!note) return false
+  note.deleted = Date.now()
+  note.open = false
+  saveNow()
+  closeNoteWindow(id)
+  return true
+})
+
+// 휴지통에서 되살리기
+ipcMain.handle('note:restore', (_e, id) => {
+  const note = notes[id]
+  if (!note) return false
+  delete note.deleted
+  saveNow()
+  showNote(id)
+  return true
+})
+
+// 휴지통에서 영구 삭제 (한 번 더 확인)
+ipcMain.handle('note:purge', async (e, id) => {
+  const { response } = await dialog.showMessageBox(BrowserWindow.fromWebContents(e.sender), {
+    type: 'warning',
+    buttons: ['영구 삭제', '취소'],
     defaultId: 1,
     cancelId: 1,
-    message: '이 메모를 삭제할까요?',
-    detail: '삭제한 메모는 되돌릴 수 없어요.',
+    message: '이 메모를 완전히 삭제할까요?',
+    detail: '사진까지 지워지고, 되돌릴 수 없어요.',
   })
   if (response !== 0) return false
-  for (const file of imagesIn(notes[id]?.html)) fs.rmSync(path.join(imageDir(), file), { force: true })
-  delete notes[id]
+  purgeNote(id)
   saveNow()
-  const win = windows.get(id)
-  if (win) {
-    if (windows.size <= 1 && !listWin) showList()
-    win.close()
-  }
+  return true
+})
+
+ipcMain.handle('trash:empty', async e => {
+  const trashed = Object.values(notes).filter(n => n.deleted)
+  if (trashed.length === 0) return false
+  const { response } = await dialog.showMessageBox(BrowserWindow.fromWebContents(e.sender), {
+    type: 'warning',
+    buttons: ['휴지통 비우기', '취소'],
+    defaultId: 1,
+    cancelId: 1,
+    message: `휴지통의 메모 ${trashed.length}개를 완전히 삭제할까요?`,
+    detail: '사진까지 지워지고, 되돌릴 수 없어요.',
+  })
+  if (response !== 0) return false
+  trashed.forEach(n => purgeNote(n.id))
+  saveNow()
   return true
 })
 
@@ -225,15 +424,21 @@ ipcMain.handle('note:toggleTop', (_e, id) => {
   return note.onTop
 })
 
-// 붙여 넣은 사진을 images 폴더에 파일로 저장하고, 불러올 주소를 돌려줘요.
+// ⏰ 알림 시각 정하기 (null이면 해제)
+ipcMain.handle('note:setRemind', (_e, id, ms) => {
+  const note = notes[id]
+  if (!note) return null
+  note.remind = Number.isFinite(ms) && ms > Date.now() ? ms : null
+  save()
+  return note.remind
+})
+
+// 붙여 넣은 사진을 images 폴더에 파일로 저장해요.
 const IMAGE_TYPES = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']
 ipcMain.handle('image:save', (_e, bytes, ext) => {
   const type = String(ext).toLowerCase()
   if (!IMAGE_TYPES.includes(type)) throw new Error('지원하지 않는 사진 형식이에요: ' + ext)
-  fs.mkdirSync(imageDir(), { recursive: true })
-  const name = `${crypto.randomUUID()}.${type}`
-  fs.writeFileSync(path.join(imageDir(), name), Buffer.from(bytes))
-  return `memo-img://img/${name}`
+  return saveImageFile(bytes, type)
 })
 
 // ── 앱 시작 ──────────────────────────────────────────────────
@@ -253,15 +458,25 @@ if (!app.requestSingleInstanceLock()) {
     })
 
     loadNotes()
-    cleanUnusedImages()
-    const all = Object.values(notes)
-    const opened = all.filter(n => n.open !== false)
-    if (all.length === 0) createNote()
+    cleanUp()
+    const alive = Object.values(notes).filter(n => !n.deleted)
+    const opened = alive.filter(n => n.open !== false)
+    if (alive.length === 0) createNote()
     else if (opened.length === 0) showList()
     else opened.forEach(openWindow)
+
+    // 화면 캡처 단축키 (다른 프로그램이 이미 쓰고 있으면 등록되지 않아요)
+    if (!globalShortcut.register(CAPTURE_KEY, startCapture)) {
+      console.warn(`캡처 단축키 ${CAPTURE_KEY}를 등록하지 못했어요.`)
+    }
+
+    // 알림 확인 시작 (켜자마자 한 번, 그 뒤로 15초마다)
+    setTimeout(checkReminders, 2000)
+    setInterval(checkReminders, REMIND_CHECK_MS)
   })
 
   // 모든 창(메모와 목록)을 닫으면 앱이 꺼져요. 메모는 저장돼 있어요.
   app.on('window-all-closed', () => app.quit())
   app.on('before-quit', saveNow)
+  app.on('will-quit', () => globalShortcut.unregisterAll())
 }

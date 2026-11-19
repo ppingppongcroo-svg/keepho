@@ -12,15 +12,32 @@
   <!-- 맨 위 막대: 여기를 잡고 끌면 창이 움직여요 -->
   <header id="bar">
     <button id="new" title="새 메모 (Ctrl+N)">＋</button>
+    <button id="remindBadge" class="badge" title="알림 시각 (눌러서 바꾸기)" hidden></button>
     <div class="grow"></div>
     <button id="color" title="색 바꾸기">●</button>
+    <button id="remind" title="알림 설정">⏰</button>
     <button id="pin" title="항상 위에 고정">📌</button>
     <button id="list" title="메모 목록">☰</button>
-    <button id="del" title="메모 삭제">🗑</button>
+    <button id="del" title="휴지통으로 이동">🗑</button>
     <button id="close" title="메모 닫기 (메모는 지워지지 않아요)">✕</button>
   </header>
 
-  <div id="palette" hidden></div>
+  <div id="palette" class="panel" hidden></div>
+
+  <!-- ⏰ 알림 설정 -->
+  <div id="remindPanel" class="panel" hidden>
+    <div class="row">
+      <button data-after="30">30분 뒤</button>
+      <button data-after="60">1시간 뒤</button>
+      <button data-after="180">3시간 뒤</button>
+      <button id="tomorrow">내일 오전 9시</button>
+    </div>
+    <div class="row">
+      <input id="remindAt" type="datetime-local">
+      <button id="remindSet">설정</button>
+      <button id="remindClear" hidden>해제</button>
+    </div>
+  </div>
 
   <!-- 글을 쓰는 곳 -->
   <main id="editor" contenteditable="true" spellcheck="false" data-placeholder="메모를 적거나 사진을 붙여 넣으세요"></main>
